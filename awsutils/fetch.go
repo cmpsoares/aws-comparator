@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -17,10 +18,11 @@ import (
 )
 
 // ResourceFetcher defines a function type for fetching resources
-type ResourceFetcher func(context.Context, interface{}) ([]interface{}, error)
+type ResourceFetcher func(context.Context, aws.Config) ([]interface{}, error)
 
 // FetchResources fetches resources from the specified AWS account and services.
 func FetchResources(account string, services []string, outputFormat string) {
+	// Load AWS Config
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithSharedConfigProfile(account),
 	)
@@ -28,6 +30,7 @@ func FetchResources(account string, services []string, outputFormat string) {
 		log.Fatalf("unable to load SDK config, %v", err)
 	}
 
+	// Map of services to their fetchers
 	resourceFetchers := map[string]ResourceFetcher{
 		"ec2":            fetchEC2Instances,
 		"s3":             fetchS3Buckets,
@@ -53,8 +56,10 @@ func FetchResources(account string, services []string, outputFormat string) {
 	}
 }
 
-func fetchEC2Instances(ctx context.Context, cfg interface{}) ([]interface{}, error) {
-	client := ec2.NewFromConfig(cfg.(config.Config))
+// Fetch functions for individual AWS services
+
+func fetchEC2Instances(ctx context.Context, cfg aws.Config) ([]interface{}, error) {
+	client := ec2.NewFromConfig(cfg)
 	output, err := client.DescribeInstances(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -69,8 +74,8 @@ func fetchEC2Instances(ctx context.Context, cfg interface{}) ([]interface{}, err
 	return resources, nil
 }
 
-func fetchS3Buckets(ctx context.Context, cfg interface{}) ([]interface{}, error) {
-	client := s3.NewFromConfig(cfg.(config.Config))
+func fetchS3Buckets(ctx context.Context, cfg aws.Config) ([]interface{}, error) {
+	client := s3.NewFromConfig(cfg)
 	output, err := client.ListBuckets(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -83,8 +88,8 @@ func fetchS3Buckets(ctx context.Context, cfg interface{}) ([]interface{}, error)
 	return resources, nil
 }
 
-func fetchIAMUsers(ctx context.Context, cfg interface{}) ([]interface{}, error) {
-	client := iam.NewFromConfig(cfg.(config.Config))
+func fetchIAMUsers(ctx context.Context, cfg aws.Config) ([]interface{}, error) {
+	client := iam.NewFromConfig(cfg)
 	output, err := client.ListUsers(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -97,8 +102,8 @@ func fetchIAMUsers(ctx context.Context, cfg interface{}) ([]interface{}, error) 
 	return resources, nil
 }
 
-func fetchRDSInstances(ctx context.Context, cfg interface{}) ([]interface{}, error) {
-	client := rds.NewFromConfig(cfg.(config.Config))
+func fetchRDSInstances(ctx context.Context, cfg aws.Config) ([]interface{}, error) {
+	client := rds.NewFromConfig(cfg)
 	output, err := client.DescribeDBInstances(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -111,8 +116,8 @@ func fetchRDSInstances(ctx context.Context, cfg interface{}) ([]interface{}, err
 	return resources, nil
 }
 
-func fetchLambdaFunctions(ctx context.Context, cfg interface{}) ([]interface{}, error) {
-	client := lambda.NewFromConfig(cfg.(config.Config))
+func fetchLambdaFunctions(ctx context.Context, cfg aws.Config) ([]interface{}, error) {
+	client := lambda.NewFromConfig(cfg)
 	output, err := client.ListFunctions(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -125,8 +130,8 @@ func fetchLambdaFunctions(ctx context.Context, cfg interface{}) ([]interface{}, 
 	return resources, nil
 }
 
-func fetchCloudFormationStacks(ctx context.Context, cfg interface{}) ([]interface{}, error) {
-	client := cloudformation.NewFromConfig(cfg.(config.Config))
+func fetchCloudFormationStacks(ctx context.Context, cfg aws.Config) ([]interface{}, error) {
+	client := cloudformation.NewFromConfig(cfg)
 	output, err := client.DescribeStacks(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -139,8 +144,8 @@ func fetchCloudFormationStacks(ctx context.Context, cfg interface{}) ([]interfac
 	return resources, nil
 }
 
-func fetchDynamoDBTables(ctx context.Context, cfg interface{}) ([]interface{}, error) {
-	client := dynamodb.NewFromConfig(cfg.(config.Config))
+func fetchDynamoDBTables(ctx context.Context, cfg aws.Config) ([]interface{}, error) {
+	client := dynamodb.NewFromConfig(cfg)
 	output, err := client.ListTables(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -153,6 +158,7 @@ func fetchDynamoDBTables(ctx context.Context, cfg interface{}) ([]interface{}, e
 	return resources, nil
 }
 
+// Print resources in the desired format
 func printResources(resources []interface{}, service string, format string) {
 	fmt.Printf("Resources for service: %s\n", service)
 	switch format {
