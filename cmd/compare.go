@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/cmpsoares/aws-comparator/awsutils"
 	"github.com/spf13/cobra"
 )
@@ -14,8 +15,9 @@ var compareCmd = &cobra.Command{
 	Short: "Compare resources between two AWS accounts",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("Comparing AWS accounts: %s and %s\n", accountA, accountB)
-		awsutils.FetchResources(accountA)
-		awsutils.FetchResources(accountB)
+		services := []string{"ec2", "s3", "rds", "lambda", "cloudformation", "dynamodb", "iam"}
+		awsutils.FetchResources(accountA, services, "json")
+		awsutils.FetchResources(accountB, services, "json")
 	},
 }
 

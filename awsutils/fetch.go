@@ -2,13 +2,25 @@ package awsutils
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"log"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	"github.com/aws/aws-sdk-go-v2/service/rds"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func FetchResources(account string) {
+// ResourceFetcher defines a function type for fetching resources
+type ResourceFetcher func(context.Context, interface{}) ([]interface{}, error)
+
+// FetchResources fetches resources from the specified AWS account and services.
+func FetchResources(account string, services []string, outputFormat string) {
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithSharedConfigProfile(account),
 	)
@@ -16,15 +28,140 @@ func FetchResources(account string) {
 		log.Fatalf("unable to load SDK config, %v", err)
 	}
 
-	ec2Client := ec2.NewFromConfig(cfg)
-	result, err := ec2Client.DescribeInstances(context.TODO(), nil)
-	if err != nil {
-		log.Fatalf("failed to describe instances, %v", err)
+	resourceFetchers := map[string]ResourceFetcher{
+		"ec2":            fetchEC2Instances,
+		"s3":             fetchS3Buckets,
+		"iam":            fetchIAMUsers,
+		"rds":            fetchRDSInstances,
+		"lambda":         fetchLambdaFunctions,
+		"cloudformation": fetchCloudFormationStacks,
+		"dynamodb":       fetchDynamoDBTables,
 	}
 
-	for _, reservation := range result.Reservations {
+	for _, service := range services {
+		if fetcher, ok := resourceFetchers[service]; ok {
+			results, err := fetcher(context.TODO(), cfg)
+			if err != nil {
+				log.Printf("Error fetching %s resources: %v\n", service, err)
+				continue
+			}
+
+			printResources(results, service, outputFormat)
+		} else {
+			log.Printf("Unsupported service: %s\n", service)
+		}
+	}
+}
+
+func fetchEC2Instances(ctx context.Context, cfg interface{}) ([]interface{}, error) {
+	client := ec2.NewFromConfig(cfg.(config.Config))
+	output, err := client.DescribeInstances(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []interface{}
+	for _, reservation := range output.Reservations {
 		for _, instance := range reservation.Instances {
-			fmt.Printf("Instance ID: %s\n", *instance.InstanceId)
+			resources = append(resources, instance)
+		}
+	}
+	return resources, nil
+}
+
+func fetchS3Buckets(ctx context.Context, cfg interface{}) ([]interface{}, error) {
+	client := s3.NewFromConfig(cfg.(config.Config))
+	output, err := client.ListBuckets(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []interface{}
+	for _, bucket := range output.Buckets {
+		resources = append(resources, bucket)
+	}
+	return resources, nil
+}
+
+func fetchIAMUsers(ctx context.Context, cfg interface{}) ([]interface{}, error) {
+	client := iam.NewFromConfig(cfg.(config.Config))
+	output, err := client.ListUsers(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []interface{}
+	for _, user := range output.Users {
+		resources = append(resources, user)
+	}
+	return resources, nil
+}
+
+func fetchRDSInstances(ctx context.Context, cfg interface{}) ([]interface{}, error) {
+	client := rds.NewFromConfig(cfg.(config.Config))
+	output, err := client.DescribeDBInstances(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []interface{}
+	for _, dbInstance := range output.DBInstances {
+		resources = append(resources, dbInstance)
+	}
+	return resources, nil
+}
+
+func fetchLambdaFunctions(ctx context.Context, cfg interface{}) ([]interface{}, error) {
+	client := lambda.NewFromConfig(cfg.(config.Config))
+	output, err := client.ListFunctions(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []interface{}
+	for _, function := range output.Functions {
+		resources = append(resources, function)
+	}
+	return resources, nil
+}
+
+func fetchCloudFormationStacks(ctx context.Context, cfg interface{}) ([]interface{}, error) {
+	client := cloudformation.NewFromConfig(cfg.(config.Config))
+	output, err := client.DescribeStacks(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []interface{}
+	for _, stack := range output.Stacks {
+		resources = append(resources, stack)
+	}
+	return resources, nil
+}
+
+func fetchDynamoDBTables(ctx context.Context, cfg interface{}) ([]interface{}, error) {
+	client := dynamodb.NewFromConfig(cfg.(config.Config))
+	output, err := client.ListTables(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []interface{}
+	for _, tableName := range output.TableNames {
+		resources = append(resources, tableName)
+	}
+	return resources, nil
+}
+
+func printResources(resources []interface{}, service string, format string) {
+	fmt.Printf("Resources for service: %s\n", service)
+	switch format {
+	case "json":
+		data, _ := json.MarshalIndent(resources, "", "  ")
+		fmt.Println(string(data))
+	default:
+		for _, resource := range resources {
+			fmt.Printf("%+v\n", resource)
 		}
 	}
 }
